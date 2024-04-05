@@ -1,0 +1,220 @@
+
+First, make sure your operating system is up to date. If you're installing LibreNMS for actual use, it's a good idea to check with your team before updating to prevent any unexpected problems at the operating system level.
+
+Once your operating system is updated, enter the following command:
+
+1. [apt install acl curl fping git graphviz imagemagick mariadb-client mariadb-server mtr-tiny nginx-full  nmap php-cli php-curl php-fpm php-gd php-gmp php-json php-mbstring php-mysql php-snmp php-xml php-zip rrdtool snmp snmpd unzip python3-pymysql python3-dotenv python3-redis python3-setuptools python3-systemd python3-pip whois traceroute]
+
+                                                            graphviz: This is a package for creating diagrams and visualizations.
+                                                            
+                                                            imagemagick: This is a software suite for creating, editing, composing, or converting bitmap images.
+                                                            
+                                                            mariadb-client: This is the MariaDB database client, used for connecting to and interacting with MariaDB database servers.
+                                                            
+                                                            mariadb-server: This is the MariaDB database server, used for storing and managing databases.
+                                                            
+                                                            mtr-tiny: This is a network diagnostic tool that combines the functionality of traceroute and ping.
+                                                            
+                                                            nginx-full: This is the full version of the Nginx web server, which is a high-performance web server and reverse proxy.
+                                                            
+                                                            nmap: This is a network scanning tool used for discovering hosts and services on a computer network.
+                                                            
+                                                            php-*: These are various PHP modules and extensions. Each module provides additional functionality to PHP. Some examples include:    php-cli: Command-line interface for PHP.    php-curl: Support for client-side URL transfers (cURL) in PHP.    php-fpm: PHP FastCGI Process Manager, used for running PHP scripts.    php-gd: Support for GD Graphics Library in PHP, used for image processing.    php-gmp: Support for arbitrary precision arithmetic in PHP using the GMP library.    php-json: Support for JSON (JavaScript Object Notation) manipulation in PHP.    php-mbstring: Multibyte string support in PHP.    php-mysql: Support for MySQL database connections in PHP.    php-snmp: Support for SNMP (Simple Network Management Protocol) in PHP.    php-xml: Support for XML processing in PHP.    php-zip: Support for ZIP archive handling in PHP.
+                                                            
+                                                            rrdtool: This is a high-performance data logging and graphing system for time-series data.
+                                                            
+                                                            snmp and snmpd: These are packages related to the SNMP protocol (Simple Network Management Protocol) for monitoring and managing network devices.
+                                                            
+                                                            unzip: This is a utility for extracting compressed files in ZIP format.
+                                                            
+                                                            python3-*: These are various Python 3 modules and packages. Each module provides additional functionality to Python. Some examples include:    python3-pymysql: Python 3 interface to MySQL databases.    python3-dotenv: Python 3 module for parsing .env files.    python3-redis: Python 3 client for Redis key-value store.    python3-setuptools: Python 3 package installer.    python3-systemd: Python 3 bindings for systemd services.    python3-pip: Python 3 package installer.
+                                                            
+                                                            whois: This is a utility used for querying WHOIS databases to obtain information about domain registrations and IP addresses.
+                                                            
+                                                            traceroute: This is a network diagnostic tool used for displaying the route packets take to reach a specified destination.
+
+2. Next, add a user to LibreNMS:
+
+root@sat-UbuntuVM:~# useradd librenms -d /opt/librenms -M -r -s "$(which bash)"
+
+this command creates a new system user account named librenms with the home directory set to /opt/librenms and the login shell set to bash
+
+
+
+3. Now download LibreNMS from the Git repository.
+
+cd /opt
+git clone https://github.com/librenms/librenms.git 
+
+
+
+4. Now grant the permissions.
+
+chown -R librenms:librenms /opt/librenms
+chmod 771 /opt/librenms
+setfacl -d -m g::rwx /opt/librenms/rrd /opt/librenms/logs /opt/librenms/bootstrap/cache/ /opt/librenms/storage/
+setfacl -R -m g::rwx /opt/librenms/rrd /opt/librenms/logs /opt/librenms/bootstrap/cache/ /opt/librenms/storage/
+
+
+
+5. Now, install the PHP dependencies.
+
+su - librenms # you will go inside the the librenms user 
+
+
+
+6. Next run the below script: 
+./scripts/composer_wrapper.php install --no-dev
+
+#Please wait for the dependencies to finish installing, and then exit the installation process.
+
+
+
+7. exit
+
+
+
+8. Make sure to set the correct time zone according to the database. If the time zone is not set correctly, the user interface (UI) may not allow you to create the database.
+
+
+
+ #vi or nano 
+
+ /etc/php/8.1/fpm/php.ini
+
+9. Now configure mariaDB:
+
+Navigate to the specified path and modify the file according to the instructions below:
+
+
+
+
+
+ 
+root@sat-UbuntuVM:/etc/mysql/mariadb.conf.d# 
+
+vi or nano (50-server.cnf )
+
+Within the [mysqld] section add:
+
+innodb_file_per_table=1
+lower_case_table_names=0
+
+
+
+10. After completing the previous steps, proceed with the following:systemctl enable mariadbsystemctl restart mariadb
+
+
+
+#Now, start MariaDB client
+
+
+
+ 
+
+mysql -u root
+
+#If you want to change the password according to your requirements, you can do so.
+
+CREATE DATABASE librenms CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'librenms'@'localhost' IDENTIFIED BY 'password';
+GRANT ALL PRIVILEGES ON librenms.* TO 'librenms'@'localhost';
+exit
+
+
+
+11. Now configure the PHP-FPM
+
+#Change the "www.conf" file to "librenms.conf".
+
+
+
+ 
+
+
+
+ 
+
+cp /etc/php/8.1/fpm/pool.d/www.conf  /etc/php/8.1/fpm/pool.d/librenms.conf
+
+#The file "librenms.conf" is not available yet. It's a new configuration file. So, we need to change the existing "www.conf" file to "librenms.conf". Make sure to adjust the configurations accordingly.
+
+#Change [www] to [librenms]:
+
+[librenms]
+
+#Change user and group to "librenms":
+
+user = librenms
+group = librenms
+
+#Change listen to a unique path that must match your webserver's config (fastcgi_pass for NGINX and SetHandler for Apache) :
+
+listen = /run/php-fpm-librenms.sock
+
+
+
+12. Now configure the nginx
+
+go to the following path (/etc/nginx/conf.d/)and create the config file called (librenms.conf) and add the below script:
+server {
+ listen      80;
+ server_name librenms.example.com;
+ root        /opt/librenms/html;
+ index       index.php;
+
+ charset utf-8;
+ gzip on;
+ gzip_types text/css application/javascript text/javascript application/x-javascript image/svg+xml text/plain text/xsd text/xsl text/xml image/x-icon;
+ location / {
+  try_files $uri $uri/ /index.php?$query_string;
+ }
+ location ~ [^/]\.php(/|$) {
+  fastcgi_pass unix:/run/php-fpm-librenms.sock;
+  fastcgi_split_path_info ^(.+\.php)(/.+)$;
+  include fastcgi.conf;
+ }
+ location ~ /\.(?!well-known).* {
+  deny all;
+ }
+}
+
+13. And remove the old config and restart the server.
+
+rm /etc/nginx/sites-enabled/default
+systemctl restart nginx
+systemctl restart php8.1-fpm
+
+
+
+14. This command copies the lnms-completion.bash file from /opt/librenms/misc/ to /etc/bash_completion.d/. This file is likely used for bash completion, providing command-line tab completion support for the lnms command.
+
+ln -s /opt/librenms/lnms /usr/bin/lnms
+
+cp /opt/librenms/misc/lnms-completion.bash /etc/bash_completion.d/
+
+
+
+15. Now configure SNMPD 
+
+Copy the (snmpd.conf.example) to (snmpd.conf)
+
+cp /opt/librenms/snmpd.conf.example /etc/snmp/snmpd.conf
+
+vi /etc/snmp/snmpd.conf
+
+Edit the text which says RANDOMSTRINGGOESHERE and set our own community string like randomsnmpd or any.
+
+curl -o /usr/bin/distro https://raw.githubusercontent.com/librenms/librenms-agent/master/snmp/distro
+
+
+
+ 
+      chmod +x /usr/bin/distro
+      systemctl enable snmpd
+      systemctl restart snmpd
+
+ 16. Enable log rotate:
+      cp /opt/librenms/misc/librenms.logrotate /etc/logrotate.d/librenms
+
+17. Now, try to access the LibreNMS interface by entering "localhost" in your web browser's address bar. This should allow you to start using LibreNMS. (http://localhost)
